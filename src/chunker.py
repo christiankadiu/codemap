@@ -28,8 +28,14 @@ def chunk_text(
     if not lines:
         return []
 
+    ranges = (
+        _markdown_ranges(lines, max_lines, overlap_lines)
+        if language == "markdown"
+        else _line_windows(1, len(lines), max_lines, overlap_lines)
+    )
+
     chunks: list[Chunk] = []
-    for start_line, end_line in _line_windows(1, len(lines), max_lines, overlap_lines):
+    for start_line, end_line in ranges:
         chunk_content = "\n".join(lines[start_line - 1 : end_line])
         if not chunk_content.strip():
             continue
@@ -54,6 +60,31 @@ def _validate_chunk_options(max_lines: int, overlap_lines: int) -> None:
         raise ValueError("overlap_lines must not be negative")
     if overlap_lines >= max_lines:
         raise ValueError("overlap_lines must be smaller than max_lines")
+
+
+def _markdown_ranges(
+    lines: list[str],
+    max_lines: int,
+    overlap_lines: int,
+) -> list[tuple[int, int]]:
+    headings = [
+        line_number
+        for line_number, line in enumerate(lines, start=1)
+        if line.lstrip().startswith("#")
+    ]
+
+    if not headings:
+        return _line_windows(1, len(lines), max_lines, overlap_lines)
+
+    ranges: list[tuple[int, int]] = []
+    if headings[0] > 1:
+        ranges.extend(_line_windows(1, headings[0] - 1, max_lines, overlap_lines))
+
+    for index, start_line in enumerate(headings):
+        end_line = headings[index + 1] - 1 if index + 1 < len(headings) else len(lines)
+        ranges.extend(_line_windows(start_line, end_line, max_lines, overlap_lines))
+
+    return ranges
 
 
 def _line_windows(
