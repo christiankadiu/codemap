@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from indexer import build_index, default_index_file
+from stats import collect_stats
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -30,6 +31,11 @@ def build_parser() -> argparse.ArgumentParser:
     index_parser.add_argument("--overlap-lines", type=int, default=20)
     index_parser.set_defaults(handler=run_index)
 
+    stats_parser = subparsers.add_parser("stats", help="show index statistics")
+    stats_parser.add_argument("--repository", type=Path, default=Path.cwd())
+    stats_parser.add_argument("--index-file", type=Path)
+    stats_parser.set_defaults(handler=run_stats)
+
     return parser
 
 
@@ -49,7 +55,29 @@ def run_index(args: argparse.Namespace) -> int:
     print(f"Files indexed: {summary.files_indexed}")
     print(f"Files skipped: {summary.files_skipped}")
     print(f"Chunks: {summary.chunks_written}")
+    print_languages(summary.languages)
     return 0
+
+
+def run_stats(args: argparse.Namespace) -> int:
+    index_file = args.index_file or default_index_file(args.repository)
+    stats = collect_stats(index_file)
+
+    print(f"Index: {stats.index_file}")
+    print(f"Files: {stats.files}")
+    print(f"Chunks: {stats.chunks}")
+    print_languages(stats.languages)
+    return 0
+
+
+def print_languages(languages: dict[str, int]) -> None:
+    if not languages:
+        print("Languages: none")
+        return
+
+    print("Languages:")
+    for language, count in languages.items():
+        print(f"  {language}: {count}")
 
 
 if __name__ == "__main__":
