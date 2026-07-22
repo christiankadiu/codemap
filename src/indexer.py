@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -30,11 +32,28 @@ def default_index_file(repository: Path | str) -> Path:
 
 def _write_chunks(index_file: Path, chunks: list[Chunk]) -> int:
     index_file.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path: Path | None = None
 
-    with index_file.open("w", encoding="utf-8") as handle:
-        for chunk in chunks:
-            json.dump(asdict(chunk), handle, ensure_ascii=False)
-            handle.write("\n")
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=index_file.parent,
+            prefix=f".{index_file.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary_path = Path(handle.name)
+
+            for chunk in chunks:
+                json.dump(asdict(chunk), handle, ensure_ascii=False)
+                handle.write("\n")
+
+        os.replace(temporary_path, index_file)
+        temporary_path = None
+    finally:
+        if temporary_path and temporary_path.exists():
+            temporary_path.unlink()
 
     return len(chunks)
 
