@@ -20,7 +20,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="repo-index")
+    parser = argparse.ArgumentParser(prog="codemap")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     index_parser = subparsers.add_parser("index", help="scan a repository")
