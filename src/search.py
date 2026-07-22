@@ -11,6 +11,7 @@ from indexer import read_chunks
 
 
 WORD_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|[0-9]+")
+CAMEL_CASE_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 
 COMMON_WORDS = {
     "a",
@@ -123,4 +124,18 @@ def _query_terms(query: str) -> tuple[str, ...]:
 
 
 def _words(value: str) -> list[str]:
-    return [match.group(0).casefold() for match in WORD_PATTERN.finditer(value)]
+    words: list[str] = []
+
+    for match in WORD_PATTERN.finditer(value):
+        word = match.group(0)
+        words.append(word.casefold())
+
+        for part in word.split("_"):
+            if part and part != word:
+                words.append(part.casefold())
+
+        for part in CAMEL_CASE_BOUNDARY.sub(" ", word).split():
+            if part and part != word:
+                words.append(part.casefold())
+
+    return words
