@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from chunker import Chunk, chunk_text
@@ -25,6 +26,17 @@ class IndexSummary:
 
 def default_index_file(repository: Path | str) -> Path:
     return Path(repository).expanduser().resolve() / DEFAULT_INDEX_DIR / DEFAULT_CHUNK_FILE
+
+
+def _write_chunks(index_file: Path, chunks: list[Chunk]) -> int:
+    index_file.parent.mkdir(parents=True, exist_ok=True)
+
+    with index_file.open("w", encoding="utf-8") as handle:
+        for chunk in chunks:
+            json.dump(asdict(chunk), handle, ensure_ascii=False)
+            handle.write("\n")
+
+    return len(chunks)
 
 
 def _chunks_for_file(
