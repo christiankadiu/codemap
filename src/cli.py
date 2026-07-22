@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from indexer import build_index, default_index_file
@@ -9,7 +10,12 @@ from indexer import build_index, default_index_file
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.handler(args)
+
+    try:
+        return args.handler(args)
+    except (FileNotFoundError, NotADirectoryError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
 
 def build_parser() -> argparse.ArgumentParser:
