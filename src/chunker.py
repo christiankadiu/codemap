@@ -14,6 +14,39 @@ class Chunk:
     content: str
 
 
+def chunk_text(
+    *,
+    file: str,
+    language: str,
+    content: str,
+    max_lines: int = 120,
+    overlap_lines: int = 20,
+) -> list[Chunk]:
+    _validate_chunk_options(max_lines, overlap_lines)
+
+    lines = content.splitlines()
+    if not lines:
+        return []
+
+    chunks: list[Chunk] = []
+    for start_line, end_line in _line_windows(1, len(lines), max_lines, overlap_lines):
+        chunk_content = "\n".join(lines[start_line - 1 : end_line])
+        if not chunk_content.strip():
+            continue
+        chunks.append(
+            Chunk(
+                id=_chunk_id(file, start_line, end_line, chunk_content),
+                file=file,
+                language=language,
+                start_line=start_line,
+                end_line=end_line,
+                content=chunk_content,
+            )
+        )
+
+    return chunks
+
+
 def _validate_chunk_options(max_lines: int, overlap_lines: int) -> None:
     if max_lines < 1:
         raise ValueError("max_lines must be greater than zero")
