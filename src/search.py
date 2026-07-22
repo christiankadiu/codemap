@@ -4,8 +4,10 @@ import re
 from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 
 from chunker import Chunk
+from indexer import read_chunks
 
 
 WORD_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|[0-9]+")
@@ -67,6 +69,15 @@ def search_chunks(
         results,
         key=lambda result: (-result.score, result.chunk.file, result.chunk.start_line),
     )[:limit]
+
+
+def search_index(
+    query: str,
+    index_file: Path | str,
+    *,
+    limit: int = 10,
+) -> list[SearchResult]:
+    return search_chunks(query, read_chunks(index_file), limit=limit)
 
 
 def _score_chunk(chunk: Chunk, query_terms: tuple[str, ...]) -> SearchResult:
