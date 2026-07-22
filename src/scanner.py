@@ -4,7 +4,7 @@ from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from languages import EXTENSION_LANGUAGES
+from languages import EXTENSION_LANGUAGES, language_for_path
 
 
 DEFAULT_EXTENSIONS = tuple(EXTENSION_LANGUAGES)
@@ -56,3 +56,17 @@ def _normalize_extensions(extensions: Iterable[str]) -> set[str]:
 
 def _should_scan_directory(path: Path, ignored_dirs: Collection[str]) -> bool:
     return path.name not in ignored_dirs and not path.is_symlink()
+
+
+def _source_file(root: Path, path: Path) -> SourceFile | None:
+    try:
+        size_bytes = path.stat().st_size
+    except OSError:
+        return None
+
+    return SourceFile(
+        path=path,
+        relative_path=path.relative_to(root).as_posix(),
+        language=language_for_path(path),
+        size_bytes=size_bytes,
+    )
