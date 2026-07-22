@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from chunker import Chunk, chunk_text
-from loader import read_text_file
-from scanner import SourceFile
+from loader import FileLoadError, read_text_file
+from scanner import SourceFile, scan_repository
 
 
 DEFAULT_INDEX_DIR = ".repo-index"
@@ -28,6 +29,55 @@ class IndexSummary:
 
 def default_index_file(repository: Path | str) -> Path:
     return Path(repository).expanduser().resolve() / DEFAULT_INDEX_DIR / DEFAULT_CHUNK_FILE
+
+
+def build_index(
+    repository: Path | str,
+    *,
+    index_file: Path | str | None = None,
+    max_file_size: int = 1_000_000,
+    max_lines: int = 120,
+    overlap_lines: int = 20,
+) -> IndexSummary:
+    root = Path(repository).expanduser().resolve()
+    output_file = Path(index_file).expanduser().resolve() if index_file else default_index_file(root)
+    source_files = scan_repository(root, max_file_size=max_file_size)
+    chunks: list[Chunk] = []
+    files_indexed = 0
+    files_skipped = 0
+    languages: Counter[str] = Counter()
+
+    for source_file in source_files:
+        try:
+            file_chunks = _chunks_for_file(
+                source_file,
+                max_file_size=max_file_size,
+                max_lines=max_lines,
+                overlap_lines=overlap_lines,
+            )
+        except FileLoadError:
+            files_skipped += 1
+            continue
+
+        if not file_chunks:
+            files_skipped += 1
+            continue
+
+        files_indexed += 1
+        languages[source_file.language] += 1
+        chunks.extend(file_chunks)
+
+    chunks_written = _write_chunks(output_file, chunks)
+
+    return IndexSummary(
+        repository=root,
+        index_file=output_file,
+        files_seen=len(source_files),
+        files_indexed=files_indexed,
+        files_skipped=files_skipped,
+        chunks_written=chunks_written,
+        languages=dict(sorted(languages.items())),
+    )
 
 
 def _write_chunks(index_file: Path, chunks: list[Chunk]) -> int:
