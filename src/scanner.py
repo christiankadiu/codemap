@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -44,3 +45,10 @@ def _resolve_repository(root: Path | str) -> Path:
         raise NotADirectoryError(f"Repository path is not a directory: {path}")
 
     return path
+
+
+def _normalize_extensions(extensions: Iterable[str]) -> set[str]:
+    return {
+        extension.lower() if extension.startswith(".") else f".{extension.lower()}"
+        for extension in extensions
+    }
