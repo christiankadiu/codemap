@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,6 +35,44 @@ class SourceFile:
     relative_path: str
     language: str
     size_bytes: int
+
+
+def scan_repository(
+    root: Path | str,
+    *,
+    extensions: Iterable[str] | None = None,
+    ignored_dirs: Collection[str] | None = None,
+    max_file_size: int = 1_000_000,
+) -> list[SourceFile]:
+    root_path = _resolve_repository(root)
+    allowed_extensions = _normalize_extensions(extensions or DEFAULT_EXTENSIONS)
+    ignored = ignored_dirs or DEFAULT_IGNORED_DIRS
+    files: list[SourceFile] = []
+
+    for dirpath, dirnames, filenames in os.walk(root_path, followlinks=False):
+        current_dir = Path(dirpath)
+        dirnames[:] = [
+            name
+            for name in sorted(dirnames)
+            if _should_scan_directory(current_dir / name, ignored)
+        ]
+
+        for filename in sorted(filenames):
+            path = current_dir / filename
+            if path.is_symlink():
+                continue
+            if path.suffix.lower() not in allowed_extensions:
+                continue
+
+            source_file = _source_file(root_path, path)
+            if source_file is None:
+                continue
+            if source_file.size_bytes > max_file_size:
+                continue
+
+            files.append(source_file)
+
+    return files
 
 
 def _resolve_repository(root: Path | str) -> Path:
