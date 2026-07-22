@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 
 
@@ -42,3 +43,8 @@ def _line_windows(
         current_start = current_end - overlap_lines + 1
 
     return windows
+
+
+def _chunk_id(file: str, start_line: int, end_line: int, content: str) -> str:
+    value = f"{file}\0{start_line}\0{end_line}\0{content}".encode("utf-8")
+    return hashlib.sha256(value).hexdigest()[:16]
