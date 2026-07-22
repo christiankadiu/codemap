@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -52,3 +52,7 @@ def _normalize_extensions(extensions: Iterable[str]) -> set[str]:
         extension.lower() if extension.startswith(".") else f".{extension.lower()}"
         for extension in extensions
     }
+
+
+def _should_scan_directory(path: Path, ignored_dirs: Collection[str]) -> bool:
+    return path.name not in ignored_dirs and not path.is_symlink()
