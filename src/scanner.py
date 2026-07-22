@@ -33,3 +33,14 @@ class SourceFile:
     relative_path: str
     language: str
     size_bytes: int
+
+
+def _resolve_repository(root: Path | str) -> Path:
+    path = Path(root).expanduser().resolve()
+
+    if not path.exists():
+        raise FileNotFoundError(f"Repository path does not exist: {path}")
+    if not path.is_dir():
+        raise NotADirectoryError(f"Repository path is not a directory: {path}")
+
+    return path
