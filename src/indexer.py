@@ -58,6 +58,18 @@ def _write_chunks(index_file: Path, chunks: list[Chunk]) -> int:
     return len(chunks)
 
 
+def read_chunks(index_file: Path | str) -> list[Chunk]:
+    chunks: list[Chunk] = []
+
+    with Path(index_file).expanduser().open(encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            chunks.append(Chunk(**json.loads(line)))
+
+    return chunks
+
+
 def _chunks_for_file(
     source_file: SourceFile,
     *,
