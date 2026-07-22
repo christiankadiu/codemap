@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from indexer import build_index, default_index_file
+from search import SearchResult, search_index
 from stats import collect_stats
 
 
@@ -35,6 +36,13 @@ def build_parser() -> argparse.ArgumentParser:
     stats_parser.add_argument("--repository", type=Path, default=Path.cwd())
     stats_parser.add_argument("--index-file", type=Path)
     stats_parser.set_defaults(handler=run_stats)
+
+    search_parser = subparsers.add_parser("search", help="search indexed chunks")
+    search_parser.add_argument("query")
+    search_parser.add_argument("--repository", type=Path, default=Path.cwd())
+    search_parser.add_argument("--index-file", type=Path)
+    search_parser.add_argument("--limit", type=int, default=10)
+    search_parser.set_defaults(handler=run_search)
 
     return parser
 
@@ -68,6 +76,28 @@ def run_stats(args: argparse.Namespace) -> int:
     print(f"Chunks: {stats.chunks}")
     print_languages(stats.languages)
     return 0
+
+
+def run_search(args: argparse.Namespace) -> int:
+    index_file = args.index_file or default_index_file(args.repository)
+    results = search_index(args.query, index_file, limit=args.limit)
+
+    if not results:
+        print("No results")
+        return 0
+
+    for result in results:
+        print_search_result(result)
+
+    return 0
+
+
+def print_search_result(result: SearchResult) -> None:
+    chunk = result.chunk
+    terms = ", ".join(result.matched_terms) if result.matched_terms else "-"
+    print(f"{chunk.file}:{chunk.start_line}-{chunk.end_line}")
+    print(f"  score: {result.score:g}")
+    print(f"  terms: {terms}")
 
 
 def print_languages(languages: dict[str, int]) -> None:
