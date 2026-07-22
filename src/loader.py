@@ -21,6 +21,8 @@ def read_text_file(path: Path | str, *, max_bytes: int = 1_000_000) -> TextFile:
 
     if len(data) > max_bytes:
         raise FileLoadError(f"File exceeds size limit: {file_path}")
+    if b"\x00" in data:
+        raise FileLoadError(f"File appears to be binary: {file_path}")
 
     try:
         content = data.decode("utf-8-sig")
