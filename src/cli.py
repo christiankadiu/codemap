@@ -44,6 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     search_parser.add_argument("--limit", type=int, default=10)
     search_parser.add_argument("--language")
     search_parser.add_argument("--path")
+    search_parser.add_argument("--show-snippets", action="store_true")
     search_parser.set_defaults(handler=run_search)
 
     return parser
@@ -95,12 +96,12 @@ def run_search(args: argparse.Namespace) -> int:
         return 0
 
     for result in results:
-        print_search_result(result)
+        print_search_result(result, show_snippets=args.show_snippets)
 
     return 0
 
 
-def print_search_result(result: SearchResult) -> None:
+def print_search_result(result: SearchResult, *, show_snippets: bool = False) -> None:
     chunk = result.chunk
     terms = ", ".join(result.matched_terms) if result.matched_terms else "-"
     lines = format_lines(result.matched_lines)
@@ -108,6 +109,26 @@ def print_search_result(result: SearchResult) -> None:
     print(f"  score: {result.score:g}")
     print(f"  terms: {terms}")
     print(f"  lines: {lines}")
+
+    if show_snippets:
+        for line in search_snippets(result):
+            print(f"  {line}")
+
+
+def search_snippets(result: SearchResult, *, limit: int = 3) -> list[str]:
+    selected_lines = set(result.matched_lines[:limit])
+    snippets: list[str] = []
+
+    for line_number, line in enumerate(result.chunk.content.splitlines(), start=result.chunk.start_line):
+        if line_number not in selected_lines:
+            continue
+
+        text = line.strip()
+        if len(text) > 120:
+            text = f"{text[:117]}..."
+        snippets.append(f"{line_number}: {text}")
+
+    return snippets
 
 
 def format_lines(lines: tuple[int, ...]) -> str:
