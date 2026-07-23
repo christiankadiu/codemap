@@ -53,6 +53,8 @@ def search_chunks(
     chunks: Iterable[Chunk],
     *,
     limit: int = 10,
+    language: str | None = None,
+    path: str | None = None,
 ) -> list[SearchResult]:
     if limit < 1:
         raise ValueError("limit must be greater than zero")
@@ -61,9 +63,10 @@ def search_chunks(
     if not query_terms:
         return []
 
+    filtered_chunks = _filter_chunks(chunks, language=language, path=path)
     results = [
         result
-        for chunk in chunks
+        for chunk in filtered_chunks
         if (result := _score_chunk(chunk, query_terms)).score > 0
     ]
 
@@ -78,8 +81,16 @@ def search_index(
     index_file: Path | str,
     *,
     limit: int = 10,
+    language: str | None = None,
+    path: str | None = None,
 ) -> list[SearchResult]:
-    return search_chunks(query, read_chunks(index_file), limit=limit)
+    return search_chunks(
+        query,
+        read_chunks(index_file),
+        limit=limit,
+        language=language,
+        path=path,
+    )
 
 
 def _score_chunk(chunk: Chunk, query_terms: tuple[str, ...]) -> SearchResult:
@@ -114,6 +125,23 @@ def _score_chunk(chunk: Chunk, query_terms: tuple[str, ...]) -> SearchResult:
         matched_terms=tuple(matched_terms),
         matched_lines=_matched_lines(chunk, query_terms),
     )
+
+
+def _filter_chunks(
+    chunks: Iterable[Chunk],
+    *,
+    language: str | None,
+    path: str | None,
+) -> Iterable[Chunk]:
+    language_filter = language.casefold() if language else None
+    path_filter = path.casefold() if path else None
+
+    for chunk in chunks:
+        if language_filter and chunk.language.casefold() != language_filter:
+            continue
+        if path_filter and path_filter not in chunk.file.casefold():
+            continue
+        yield chunk
 
 
 def _query_terms(query: str) -> tuple[str, ...]:

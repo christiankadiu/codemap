@@ -42,6 +42,8 @@ def build_parser() -> argparse.ArgumentParser:
     search_parser.add_argument("--repository", type=Path, default=Path.cwd())
     search_parser.add_argument("--index-file", type=Path)
     search_parser.add_argument("--limit", type=int, default=10)
+    search_parser.add_argument("--language")
+    search_parser.add_argument("--path")
     search_parser.set_defaults(handler=run_search)
 
     return parser
@@ -80,7 +82,13 @@ def run_stats(args: argparse.Namespace) -> int:
 
 def run_search(args: argparse.Namespace) -> int:
     index_file = args.index_file or default_index_file(args.repository)
-    results = search_index(args.query, index_file, limit=args.limit)
+    results = search_index(
+        args.query,
+        index_file,
+        limit=args.limit,
+        language=args.language,
+        path=args.path,
+    )
 
     if not results:
         print("No results")
