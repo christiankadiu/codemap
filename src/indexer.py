@@ -14,12 +14,14 @@ from scanner import SourceFile, scan_repository
 
 DEFAULT_INDEX_DIR = ".repo-index"
 DEFAULT_CHUNK_FILE = "chunks.jsonl"
+INDEX_FORMAT_VERSION = 1
 
 
 @dataclass(frozen=True)
 class IndexSummary:
     repository: Path
     index_file: Path
+    format_version: int
     files_seen: int
     files_indexed: int
     files_skipped: int
@@ -72,6 +74,7 @@ def build_index(
     return IndexSummary(
         repository=root,
         index_file=output_file,
+        format_version=INDEX_FORMAT_VERSION,
         files_seen=len(source_files),
         files_indexed=files_indexed,
         files_skipped=files_skipped,
