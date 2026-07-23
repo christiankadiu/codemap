@@ -62,6 +62,8 @@ def run_index(args: argparse.Namespace) -> int:
 
     print(f"Repository: {summary.repository}")
     print(f"Index: {summary.index_file}")
+    print(f"Metadata: {summary.metadata_file}")
+    print(f"Format: {summary.format_version}")
     print(f"Files seen: {summary.files_seen}")
     print(f"Files indexed: {summary.files_indexed}")
     print(f"Files skipped: {summary.files_skipped}")
@@ -75,6 +77,7 @@ def run_stats(args: argparse.Namespace) -> int:
     stats = collect_stats(index_file)
 
     print(f"Index: {stats.index_file}")
+    print(f"Format: {stats.format_version if stats.format_version is not None else 'unknown'}")
     print(f"Files: {stats.files}")
     print(f"Chunks: {stats.chunks}")
     print_languages(stats.languages)
