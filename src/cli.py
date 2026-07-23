@@ -95,9 +95,19 @@ def run_search(args: argparse.Namespace) -> int:
 def print_search_result(result: SearchResult) -> None:
     chunk = result.chunk
     terms = ", ".join(result.matched_terms) if result.matched_terms else "-"
+    lines = format_lines(result.matched_lines)
     print(f"{chunk.file}:{chunk.start_line}-{chunk.end_line}")
     print(f"  score: {result.score:g}")
     print(f"  terms: {terms}")
+    print(f"  lines: {lines}")
+
+
+def format_lines(lines: tuple[int, ...]) -> str:
+    if not lines:
+        return "-"
+
+    visible = ", ".join(str(line) for line in lines[:8])
+    return f"{visible}, ..." if len(lines) > 8 else visible
 
 
 def print_languages(languages: dict[str, int]) -> None:

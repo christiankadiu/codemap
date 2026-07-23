@@ -45,6 +45,7 @@ class SearchResult:
     chunk: Chunk
     score: float
     matched_terms: tuple[str, ...]
+    matched_lines: tuple[int, ...]
 
 
 def search_chunks(
@@ -107,7 +108,12 @@ def _score_chunk(chunk: Chunk, query_terms: tuple[str, ...]) -> SearchResult:
     if len(query_terms) > 1 and " ".join(query_terms) in content:
         score += 4
 
-    return SearchResult(chunk=chunk, score=score, matched_terms=tuple(matched_terms))
+    return SearchResult(
+        chunk=chunk,
+        score=score,
+        matched_terms=tuple(matched_terms),
+        matched_lines=_matched_lines(chunk, query_terms),
+    )
 
 
 def _query_terms(query: str) -> tuple[str, ...]:
@@ -121,6 +127,19 @@ def _query_terms(query: str) -> tuple[str, ...]:
         seen.add(word)
 
     return tuple(terms)
+
+
+def _matched_lines(chunk: Chunk, query_terms: tuple[str, ...]) -> tuple[int, ...]:
+    lines: list[int] = []
+
+    for line_number, line in enumerate(chunk.content.splitlines(), start=chunk.start_line):
+        line_words = set(_words(line))
+        line_text = line.casefold()
+
+        if any(term in line_words or term in line_text for term in query_terms):
+            lines.append(line_number)
+
+    return tuple(lines)
 
 
 def _words(value: str) -> list[str]:
