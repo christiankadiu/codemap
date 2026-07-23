@@ -9,6 +9,7 @@ class Chunk:
     id: str
     file: str
     language: str
+    file_hash: str
     start_line: int
     end_line: int
     content: str
@@ -18,6 +19,7 @@ def chunk_text(
     *,
     file: str,
     language: str,
+    file_hash: str,
     content: str,
     max_lines: int = 120,
     overlap_lines: int = 20,
@@ -44,6 +46,7 @@ def chunk_text(
                 id=_chunk_id(file, start_line, end_line, chunk_content),
                 file=file,
                 language=language,
+                file_hash=file_hash,
                 start_line=start_line,
                 end_line=end_line,
                 content=chunk_content,

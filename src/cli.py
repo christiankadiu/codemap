@@ -7,6 +7,7 @@ from pathlib import Path
 from indexer import build_index, default_index_file
 from search import SearchResult, search_index
 from stats import collect_stats
+from status import IndexStatus, check_index
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -37,6 +38,12 @@ def build_parser() -> argparse.ArgumentParser:
     stats_parser.add_argument("--index-file", type=Path)
     stats_parser.set_defaults(handler=run_stats)
 
+    status_parser = subparsers.add_parser("status", help="check index freshness")
+    status_parser.add_argument("--repository", type=Path, default=Path.cwd())
+    status_parser.add_argument("--index-file", type=Path)
+    status_parser.add_argument("--max-file-size", type=int, default=1_000_000)
+    status_parser.set_defaults(handler=run_status)
+
     search_parser = subparsers.add_parser("search", help="search indexed chunks")
     search_parser.add_argument("query")
     search_parser.add_argument("--repository", type=Path, default=Path.cwd())
@@ -62,6 +69,8 @@ def run_index(args: argparse.Namespace) -> int:
 
     print(f"Repository: {summary.repository}")
     print(f"Index: {summary.index_file}")
+    print(f"Metadata: {summary.metadata_file}")
+    print(f"Format: {summary.format_version}")
     print(f"Files seen: {summary.files_seen}")
     print(f"Files indexed: {summary.files_indexed}")
     print(f"Files skipped: {summary.files_skipped}")
@@ -75,9 +84,22 @@ def run_stats(args: argparse.Namespace) -> int:
     stats = collect_stats(index_file)
 
     print(f"Index: {stats.index_file}")
+    print(f"Format: {stats.format_version if stats.format_version is not None else 'unknown'}")
     print(f"Files: {stats.files}")
     print(f"Chunks: {stats.chunks}")
     print_languages(stats.languages)
+    return 0
+
+
+def run_status(args: argparse.Namespace) -> int:
+    index_file = args.index_file or default_index_file(args.repository)
+    index_status = check_index(
+        args.repository,
+        index_file=index_file,
+        max_file_size=args.max_file_size,
+    )
+
+    print_index_status(index_status)
     return 0
 
 
@@ -99,6 +121,21 @@ def run_search(args: argparse.Namespace) -> int:
         print_search_result(result, show_snippets=args.show_snippets)
 
     return 0
+
+
+def print_index_status(index_status: IndexStatus) -> None:
+    print(f"Repository: {index_status.repository}")
+    print(f"Index: {index_status.index_file}")
+    print(f"Current: {'yes' if index_status.is_current else 'no'}")
+    print(f"Files indexed: {index_status.indexed_files}")
+    print(f"Files scanned: {index_status.scanned_files}")
+    print(f"Unchanged: {len(index_status.unchanged_files)}")
+    print(f"Changed: {len(index_status.changed_files)}")
+    print(f"Missing: {len(index_status.missing_files)}")
+    print(f"New: {len(index_status.new_files)}")
+    print_paths("Changed files", index_status.changed_files)
+    print_paths("Missing files", index_status.missing_files)
+    print_paths("New files", index_status.new_files)
 
 
 def print_search_result(result: SearchResult, *, show_snippets: bool = False) -> None:
@@ -147,6 +184,19 @@ def print_languages(languages: dict[str, int]) -> None:
     print("Languages:")
     for language, count in languages.items():
         print(f"  {language}: {count}")
+
+
+def print_paths(label: str, paths: tuple[str, ...], *, limit: int = 20) -> None:
+    if not paths:
+        return
+
+    print(f"{label}:")
+    for path in paths[:limit]:
+        print(f"  {path}")
+
+    remaining = len(paths) - limit
+    if remaining > 0:
+        print(f"  ... {remaining} more")
 
 
 if __name__ == "__main__":
