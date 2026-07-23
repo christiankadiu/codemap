@@ -14,7 +14,7 @@ from scanner import SourceFile, scan_repository
 
 DEFAULT_INDEX_DIR = ".repo-index"
 DEFAULT_CHUNK_FILE = "chunks.jsonl"
-INDEX_FORMAT_VERSION = 1
+INDEX_FORMAT_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -118,7 +118,9 @@ def read_chunks(index_file: Path | str) -> list[Chunk]:
         for line in handle:
             if not line.strip():
                 continue
-            chunks.append(Chunk(**json.loads(line)))
+            record = json.loads(line)
+            record.setdefault("file_hash", "")
+            chunks.append(Chunk(**record))
 
     return chunks
 
@@ -134,6 +136,7 @@ def _chunks_for_file(
     return chunk_text(
         file=source_file.relative_path,
         language=source_file.language,
+        file_hash=source_file.content_hash,
         content=text_file.content,
         max_lines=max_lines,
         overlap_lines=overlap_lines,
