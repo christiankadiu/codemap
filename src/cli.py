@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
-from context import build_context, render_context
+from context import build_context, context_records, render_context
 from indexer import build_index, default_index_file
 from search import SearchResult, search_index
 from stats import collect_stats
@@ -55,6 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
     context_parser.add_argument("--lines-before", type=int, default=2)
     context_parser.add_argument("--lines-after", type=int, default=2)
     context_parser.add_argument("--max-lines", type=int, default=80)
+    context_parser.add_argument("--format", choices=("text", "json"), default="text")
     context_parser.set_defaults(handler=run_context)
 
     search_parser = subparsers.add_parser("search", help="search indexed chunks")
@@ -130,10 +132,18 @@ def run_context(args: argparse.Namespace) -> int:
     )
 
     if not sections:
+        if args.format == "json":
+            print("[]")
+            return 0
+
         print("No context")
         return 0
 
-    print(render_context(sections))
+    if args.format == "json":
+        print(json.dumps(context_records(sections), ensure_ascii=False, indent=2))
+    else:
+        print(render_context(sections))
+
     return 0
 
 

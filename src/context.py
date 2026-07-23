@@ -109,6 +109,31 @@ def render_context(sections: Iterable[ContextSection], *, max_line_length: int =
     return "\n".join(output)
 
 
+def context_records(sections: Iterable[ContextSection]) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+
+    for section in sections:
+        records.append(
+            {
+                "file": section.file,
+                "language": section.language,
+                "start_line": section.start_line,
+                "end_line": section.end_line,
+                "score": section.score,
+                "lines": [
+                    {
+                        "number": line.number,
+                        "text": line.text,
+                        "matched": line.matched,
+                    }
+                    for line in section.lines
+                ],
+            }
+        )
+
+    return records
+
+
 def _context_lines(
     result: SearchResult,
     lines_before: int,
