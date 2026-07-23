@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 from collections.abc import Collection, Iterable
 from dataclasses import dataclass
@@ -35,6 +36,7 @@ class SourceFile:
     relative_path: str
     language: str
     size_bytes: int
+    content_hash: str
 
 
 def scan_repository(
@@ -99,7 +101,7 @@ def _should_scan_directory(path: Path, ignored_dirs: Collection[str]) -> bool:
 
 def _source_file(root: Path, path: Path) -> SourceFile | None:
     try:
-        size_bytes = path.stat().st_size
+        data = path.read_bytes()
     except OSError:
         return None
 
@@ -107,5 +109,6 @@ def _source_file(root: Path, path: Path) -> SourceFile | None:
         path=path,
         relative_path=path.relative_to(root).as_posix(),
         language=language_for_path(path),
-        size_bytes=size_bytes,
+        size_bytes=len(data),
+        content_hash=hashlib.sha256(data).hexdigest(),
     )
