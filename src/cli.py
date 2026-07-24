@@ -5,6 +5,7 @@ import json
 import sys
 from pathlib import Path
 
+from answers import answer_request_record, build_answer_request, render_answer_request
 from context import build_context, context_records, render_context
 from indexer import build_index, default_index_file
 from search import SearchResult, search_index
@@ -58,6 +59,19 @@ def build_parser() -> argparse.ArgumentParser:
     context_parser.add_argument("--max-lines", type=int, default=80)
     context_parser.add_argument("--format", choices=("text", "json"), default="text")
     context_parser.set_defaults(handler=run_context)
+
+    answer_parser = subparsers.add_parser("answer", help="prepare an answer")
+    answer_parser.add_argument("question")
+    answer_parser.add_argument("--repository", type=Path, default=Path.cwd())
+    answer_parser.add_argument("--index-file", type=Path)
+    answer_parser.add_argument("--limit", type=int, default=5)
+    answer_parser.add_argument("--language")
+    answer_parser.add_argument("--path")
+    answer_parser.add_argument("--lines-before", type=int, default=2)
+    answer_parser.add_argument("--lines-after", type=int, default=2)
+    answer_parser.add_argument("--max-lines", type=int, default=80)
+    answer_parser.add_argument("--format", choices=("text", "json"), default="text")
+    answer_parser.set_defaults(handler=run_answer)
 
     search_parser = subparsers.add_parser("search", help="search indexed chunks")
     search_parser.add_argument("query")
@@ -143,6 +157,27 @@ def run_context(args: argparse.Namespace) -> int:
         print(json.dumps(context_records(sections), ensure_ascii=False, indent=2))
     else:
         print(render_context(sections))
+
+    return 0
+
+
+def run_answer(args: argparse.Namespace) -> int:
+    index_file = args.index_file or default_index_file(args.repository)
+    request = build_answer_request(
+        args.question,
+        index_file,
+        limit=args.limit,
+        language=args.language,
+        path=args.path,
+        lines_before=args.lines_before,
+        lines_after=args.lines_after,
+        max_lines=args.max_lines,
+    )
+
+    if args.format == "json":
+        print(json.dumps(answer_request_record(request), ensure_ascii=False, indent=2))
+    else:
+        print(render_answer_request(request))
 
     return 0
 
