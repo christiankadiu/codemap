@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
+from context import build_context, context_records, render_context
 from indexer import build_index, default_index_file
 from search import SearchResult, search_index
 from stats import collect_stats
@@ -38,11 +40,24 @@ def build_parser() -> argparse.ArgumentParser:
     stats_parser.add_argument("--index-file", type=Path)
     stats_parser.set_defaults(handler=run_stats)
 
-    status_parser = subparsers.add_parser("status", help="check index freshness")
+    status_parser = subparsers.add_parser("status", help="check index status")
     status_parser.add_argument("--repository", type=Path, default=Path.cwd())
     status_parser.add_argument("--index-file", type=Path)
     status_parser.add_argument("--max-file-size", type=int, default=1_000_000)
     status_parser.set_defaults(handler=run_status)
+
+    context_parser = subparsers.add_parser("context", help="build search context")
+    context_parser.add_argument("query")
+    context_parser.add_argument("--repository", type=Path, default=Path.cwd())
+    context_parser.add_argument("--index-file", type=Path)
+    context_parser.add_argument("--limit", type=int, default=5)
+    context_parser.add_argument("--language")
+    context_parser.add_argument("--path")
+    context_parser.add_argument("--lines-before", type=int, default=2)
+    context_parser.add_argument("--lines-after", type=int, default=2)
+    context_parser.add_argument("--max-lines", type=int, default=80)
+    context_parser.add_argument("--format", choices=("text", "json"), default="text")
+    context_parser.set_defaults(handler=run_context)
 
     search_parser = subparsers.add_parser("search", help="search indexed chunks")
     search_parser.add_argument("query")
@@ -100,6 +115,35 @@ def run_status(args: argparse.Namespace) -> int:
     )
 
     print_index_status(index_status)
+    return 0
+
+
+def run_context(args: argparse.Namespace) -> int:
+    index_file = args.index_file or default_index_file(args.repository)
+    sections = build_context(
+        args.query,
+        index_file,
+        limit=args.limit,
+        language=args.language,
+        path=args.path,
+        lines_before=args.lines_before,
+        lines_after=args.lines_after,
+        max_lines=args.max_lines,
+    )
+
+    if not sections:
+        if args.format == "json":
+            print("[]")
+            return 0
+
+        print("No context")
+        return 0
+
+    if args.format == "json":
+        print(json.dumps(context_records(sections), ensure_ascii=False, indent=2))
+    else:
+        print(render_context(sections))
+
     return 0
 
 
