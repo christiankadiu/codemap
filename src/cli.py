@@ -5,9 +5,10 @@ import json
 import sys
 from pathlib import Path
 
-from answers import answer_request_record, build_answer_request, render_answer_request
+from answers import build_answer_request
 from context import build_context, context_records, render_context
 from indexer import build_index, default_index_file
+from responses import build_response, render_response, response_record
 from search import SearchResult, search_index
 from stats import collect_stats
 from status import IndexStatus, check_index
@@ -71,6 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
     answer_parser.add_argument("--lines-after", type=int, default=2)
     answer_parser.add_argument("--max-lines", type=int, default=80)
     answer_parser.add_argument("--format", choices=("text", "json"), default="text")
+    answer_parser.add_argument("--show-context", action="store_true")
     answer_parser.set_defaults(handler=run_answer)
 
     search_parser = subparsers.add_parser("search", help="search indexed chunks")
@@ -173,11 +175,21 @@ def run_answer(args: argparse.Namespace) -> int:
         lines_after=args.lines_after,
         max_lines=args.max_lines,
     )
+    response = build_response(request)
 
     if args.format == "json":
-        print(json.dumps(answer_request_record(request), ensure_ascii=False, indent=2))
-    else:
-        print(render_answer_request(request))
+        record = response_record(response)
+        if args.show_context:
+            record["context"] = context_records(request.context)
+        print(json.dumps(record, ensure_ascii=False, indent=2))
+        return 0
+
+    print(render_response(response))
+
+    if args.show_context and request.has_context:
+        print()
+        print("Context:")
+        print(render_context(request.context))
 
     return 0
 
