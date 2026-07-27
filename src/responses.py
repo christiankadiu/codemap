@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from answers import AnswerReference, AnswerRequest
-from context import ContextLine, ContextSection
+from providers import BasicResponseProvider, ResponseProvider
 
 
 @dataclass(frozen=True)
@@ -17,18 +17,18 @@ class ResponseResult:
         return bool(self.references)
 
 
-def build_response(request: AnswerRequest) -> ResponseResult:
-    if not request.has_context:
-        return ResponseResult(
-            question=request.question,
-            text="No matching code found in the current index.",
-            references=(),
-        )
+def build_response(
+    request: AnswerRequest,
+    *,
+    provider: ResponseProvider | None = None,
+) -> ResponseResult:
+    selected_provider = provider or BasicResponseProvider()
+    provider_text = selected_provider.build_text(request)
 
     return ResponseResult(
         question=request.question,
-        text=_response_text(request),
-        references=request.references,
+        text=provider_text.text,
+        references=request.references if request.has_context else (),
     )
 
 
@@ -61,39 +61,3 @@ def render_response(result: ResponseResult) -> str:
         output.append(f"- {reference.file}:{reference.start_line}-{reference.end_line}")
 
     return "\n".join(output)
-
-
-def _response_text(request: AnswerRequest) -> str:
-    first_reference = request.references[0]
-    matched_lines = _matched_lines(request.context)
-
-    output = [
-        f"Found matching code in {first_reference.file}:{first_reference.start_line}-{first_reference.end_line}."
-    ]
-
-    if len(request.references) > 1:
-        output.append(f"{len(request.references)} references were selected from the index.")
-
-    if matched_lines:
-        output.append(f"Matched lines: {_format_lines(matched_lines)}.")
-
-    return " ".join(output)
-
-
-def _matched_lines(sections: tuple[ContextSection, ...]) -> tuple[ContextLine, ...]:
-    lines: list[ContextLine] = []
-
-    for section in sections:
-        lines.extend(line for line in section.lines if line.matched)
-
-    return tuple(lines)
-
-
-def _format_lines(lines: tuple[ContextLine, ...], *, limit: int = 8) -> str:
-    selected = ", ".join(str(line.number) for line in lines[:limit])
-    remaining = len(lines) - limit
-
-    if remaining <= 0:
-        return selected
-
-    return f"{selected}, and {remaining} more"
