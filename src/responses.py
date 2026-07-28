@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from answers import AnswerReference, AnswerRequest
+from provider_input import build_provider_input
 from providers import BasicResponseProvider, ResponseProvider
 
 
@@ -23,7 +24,8 @@ def build_response(
     provider: ResponseProvider | None = None,
 ) -> ResponseResult:
     selected_provider = provider or BasicResponseProvider()
-    provider_text = selected_provider.build_text(request)
+    provider_input = build_provider_input(request)
+    provider_text = selected_provider.build_text(provider_input)
 
     return ResponseResult(
         question=request.question,
