@@ -8,6 +8,7 @@ from pathlib import Path
 from answers import build_answer_request
 from context import build_context, context_records, render_context
 from indexer import build_index, default_index_file
+from providers import provider_for_name, provider_names
 from responses import build_response, render_response, response_record
 from search import SearchResult, search_index
 from stats import collect_stats
@@ -72,6 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
     answer_parser.add_argument("--lines-after", type=int, default=2)
     answer_parser.add_argument("--max-lines", type=int, default=80)
     answer_parser.add_argument("--format", choices=("text", "json"), default="text")
+    answer_parser.add_argument("--provider", choices=provider_names(), default="basic")
     answer_parser.add_argument("--show-context", action="store_true")
     answer_parser.set_defaults(handler=run_answer)
 
@@ -175,7 +177,7 @@ def run_answer(args: argparse.Namespace) -> int:
         lines_after=args.lines_after,
         max_lines=args.max_lines,
     )
-    response = build_response(request)
+    response = build_response(request, provider=provider_for_name(args.provider))
 
     if args.format == "json":
         record = response_record(response)
