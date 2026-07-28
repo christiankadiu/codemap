@@ -7,6 +7,9 @@ from context import ContextLine, ContextSection
 from provider_input import ProviderInput
 
 
+PROVIDER_NAMES = ("basic",)
+
+
 @dataclass(frozen=True)
 class ProviderText:
     text: str
@@ -36,6 +39,19 @@ class BasicResponseProvider:
             output.append(f"Matched lines: {_format_lines(matched_lines)}.")
 
         return ProviderText(" ".join(output))
+
+
+def provider_names() -> tuple[str, ...]:
+    return PROVIDER_NAMES
+
+
+def provider_for_name(name: str) -> ResponseProvider:
+    provider_name = name.strip().casefold()
+
+    if provider_name == "basic":
+        return BasicResponseProvider()
+
+    raise ValueError(f"unsupported provider: {name}")
 
 
 def _matched_lines(sections: tuple[ContextSection, ...]) -> tuple[ContextLine, ...]:
