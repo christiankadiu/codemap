@@ -15,14 +15,28 @@ class ProviderText:
     text: str
 
 
+@dataclass(frozen=True)
+class ProviderOptions:
+    model: str | None = None
+    timeout_seconds: float = 30.0
+
+
 class ResponseProvider(Protocol):
-    def build_text(self, provider_input: ProviderInput) -> ProviderText:
+    def build_text(
+        self,
+        provider_input: ProviderInput,
+        options: ProviderOptions,
+    ) -> ProviderText:
         ...
 
 
 @dataclass(frozen=True)
 class BasicResponseProvider:
-    def build_text(self, provider_input: ProviderInput) -> ProviderText:
+    def build_text(
+        self,
+        provider_input: ProviderInput,
+        options: ProviderOptions,
+    ) -> ProviderText:
         if not provider_input.has_context:
             return ProviderText("No matching code found in the current index.")
 

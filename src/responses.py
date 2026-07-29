@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from answers import AnswerReference, AnswerRequest
 from provider_input import build_provider_input
-from providers import BasicResponseProvider, ResponseProvider
+from providers import BasicResponseProvider, ProviderOptions, ResponseProvider
 
 
 @dataclass(frozen=True)
@@ -22,10 +22,12 @@ def build_response(
     request: AnswerRequest,
     *,
     provider: ResponseProvider | None = None,
+    options: ProviderOptions | None = None,
 ) -> ResponseResult:
     selected_provider = provider or BasicResponseProvider()
+    selected_options = options or ProviderOptions()
     provider_input = build_provider_input(request)
-    provider_text = selected_provider.build_text(provider_input)
+    provider_text = selected_provider.build_text(provider_input, selected_options)
 
     return ResponseResult(
         question=request.question,
