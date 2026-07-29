@@ -37,6 +37,24 @@ def load_config(
     )
 
 
+def config_record(config: RuntimeConfig) -> dict[str, object]:
+    return {
+        "provider": config.provider,
+        "model": _model_status(config),
+        "timeout_seconds": config.timeout_seconds,
+    }
+
+
+def render_config(config: RuntimeConfig) -> str:
+    return "\n".join(
+        (
+            f"Provider: {config.provider}",
+            f"Model: {_model_status(config)}",
+            f"Timeout: {_format_timeout(config.timeout_seconds)}",
+        )
+    )
+
+
 def _provider_value(value: str | None) -> str:
     provider = (_optional_value(value) or DEFAULT_PROVIDER).casefold()
 
@@ -60,6 +78,17 @@ def _timeout_value(value: str | None) -> float:
         raise ValueError(f"{ENV_TIMEOUT_SECONDS} must be greater than zero")
 
     return timeout
+
+
+def _model_status(config: RuntimeConfig) -> str:
+    return "configured" if config.model else "none"
+
+
+def _format_timeout(timeout_seconds: float) -> str:
+    if timeout_seconds.is_integer():
+        return str(int(timeout_seconds))
+
+    return str(timeout_seconds)
 
 
 def _optional_value(value: str | None) -> str | None:

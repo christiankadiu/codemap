@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from answers import build_answer_request
-from config import load_config
+from config import config_record, load_config, render_config
 from context import build_context, context_records, render_context
 from indexer import build_index, default_index_file
 from providers import provider_for_name, provider_names
@@ -43,6 +43,10 @@ def build_parser() -> argparse.ArgumentParser:
     stats_parser.add_argument("--repository", type=Path, default=Path.cwd())
     stats_parser.add_argument("--index-file", type=Path)
     stats_parser.set_defaults(handler=run_stats)
+
+    config_parser = subparsers.add_parser("config", help="show runtime config")
+    config_parser.add_argument("--format", choices=("text", "json"), default="text")
+    config_parser.set_defaults(handler=run_config)
 
     status_parser = subparsers.add_parser("status", help="check index status")
     status_parser.add_argument("--repository", type=Path, default=Path.cwd())
@@ -122,6 +126,17 @@ def run_stats(args: argparse.Namespace) -> int:
     print(f"Files: {stats.files}")
     print(f"Chunks: {stats.chunks}")
     print_languages(stats.languages)
+    return 0
+
+
+def run_config(args: argparse.Namespace) -> int:
+    config = load_config()
+
+    if args.format == "json":
+        print(json.dumps(config_record(config), ensure_ascii=False, indent=2))
+    else:
+        print(render_config(config))
+
     return 0
 
 
