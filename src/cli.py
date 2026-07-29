@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from answers import build_answer_request
+from config import load_config
 from context import build_context, context_records, render_context
 from indexer import build_index, default_index_file
 from providers import provider_for_name, provider_names
@@ -73,7 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
     answer_parser.add_argument("--lines-after", type=int, default=2)
     answer_parser.add_argument("--max-lines", type=int, default=80)
     answer_parser.add_argument("--format", choices=("text", "json"), default="text")
-    answer_parser.add_argument("--provider", choices=provider_names(), default="basic")
+    answer_parser.add_argument("--provider", choices=provider_names())
     answer_parser.add_argument("--show-context", action="store_true")
     answer_parser.set_defaults(handler=run_answer)
 
@@ -166,6 +167,7 @@ def run_context(args: argparse.Namespace) -> int:
 
 
 def run_answer(args: argparse.Namespace) -> int:
+    config = load_config(provider=args.provider)
     index_file = args.index_file or default_index_file(args.repository)
     request = build_answer_request(
         args.question,
@@ -177,7 +179,7 @@ def run_answer(args: argparse.Namespace) -> int:
         lines_after=args.lines_after,
         max_lines=args.max_lines,
     )
-    response = build_response(request, provider=provider_for_name(args.provider))
+    response = build_response(request, provider=provider_for_name(config.provider))
 
     if args.format == "json":
         record = response_record(response)
