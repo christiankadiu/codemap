@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from answers import build_answer_request
-from config import config_record, load_config, render_config
+from config import config_record, load_config, provider_options, render_config
 from context import build_context, context_records, render_context
 from indexer import build_index, default_index_file
 from providers import provider_for_name, provider_names
@@ -194,7 +194,11 @@ def run_answer(args: argparse.Namespace) -> int:
         lines_after=args.lines_after,
         max_lines=args.max_lines,
     )
-    response = build_response(request, provider=provider_for_name(config.provider))
+    response = build_response(
+        request,
+        provider=provider_for_name(config.provider),
+        options=provider_options(config),
+    )
 
     if args.format == "json":
         record = response_record(response)

@@ -4,7 +4,7 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from providers import provider_names
+from providers import ProviderOptions, provider_names
 
 
 DEFAULT_PROVIDER = "basic"
@@ -52,6 +52,13 @@ def render_config(config: RuntimeConfig) -> str:
             f"Model: {_model_status(config)}",
             f"Timeout: {_format_timeout(config.timeout_seconds)}",
         )
+    )
+
+
+def provider_options(config: RuntimeConfig) -> ProviderOptions:
+    return ProviderOptions(
+        model=config.model,
+        timeout_seconds=config.timeout_seconds,
     )
 
 
