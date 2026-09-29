@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from context import ContextSection, build_context, context_records, render_context
+from codemap.context import ContextSection, build_context, context_records, render_context
+from codemap.privacy import redact
 
 
 @dataclass(frozen=True)
@@ -13,6 +14,7 @@ class AnswerReference:
     start_line: int
     end_line: int
     score: float
+    reference_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -36,8 +38,12 @@ def build_answer_request(
     lines_before: int = 2,
     lines_after: int = 2,
     max_lines: int = 80,
+    max_chars: int = 12000,
+    mode: str = "auto",
+    embedding_provider=None,
+    min_score: float = 0.2,
 ) -> AnswerRequest:
-    clean_question = question.strip()
+    clean_question = redact(question.strip())
     if not clean_question:
         raise ValueError("question must not be empty")
 
@@ -51,6 +57,10 @@ def build_answer_request(
             lines_before=lines_before,
             lines_after=lines_after,
             max_lines=max_lines,
+            max_chars=max_chars,
+            mode=mode,
+            embedding_provider=embedding_provider,
+            min_score=min_score,
         )
     )
 
@@ -67,6 +77,7 @@ def answer_request_record(request: AnswerRequest) -> dict[str, object]:
         "references": [
             {
                 "file": reference.file,
+                "reference_id": reference.reference_id,
                 "language": reference.language,
                 "start_line": reference.start_line,
                 "end_line": reference.end_line,
@@ -108,6 +119,7 @@ def _references_for(sections: tuple[ContextSection, ...]) -> tuple[AnswerReferen
             start_line=section.start_line,
             end_line=section.end_line,
             score=section.score,
+            reference_id=f"S{index}",
         )
-        for section in sections
+        for index, section in enumerate(sections, 1)
     )

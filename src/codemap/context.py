@@ -4,7 +4,9 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from search import SearchResult, search_index
+from codemap.privacy import redact
+from codemap.retriever import retrieve
+from codemap.search import SearchResult
 
 
 @dataclass(frozen=True)
@@ -34,19 +36,27 @@ def build_context(
     lines_before: int = 2,
     lines_after: int = 2,
     max_lines: int = 80,
+    max_chars: int = 12000,
+    mode: str = "auto",
+    embedding_provider=None,
+    min_score: float = 0.2,
 ) -> list[ContextSection]:
-    results = search_index(
+    results = retrieve(
         query,
         index_file,
         limit=limit,
         language=language,
         path=path,
+        mode=mode,
+        provider=embedding_provider,
+        min_score=min_score,
     )
     return context_from_results(
         results,
         lines_before=lines_before,
         lines_after=lines_after,
         max_lines=max_lines,
+        max_chars=max_chars,
     )
 
 
@@ -56,21 +66,40 @@ def context_from_results(
     lines_before: int = 2,
     lines_after: int = 2,
     max_lines: int = 80,
+    max_chars: int = 12000,
 ) -> list[ContextSection]:
     _validate_options(lines_before, lines_after, max_lines)
 
+    if max_chars < 1:
+        raise ValueError("max_chars must be greater than zero")
     sections: list[ContextSection] = []
     remaining_lines = max_lines
+    seen: set[tuple[str, int]] = set()
+    remaining_chars = max_chars
 
     for result in results:
-        if remaining_lines <= 0:
+        if remaining_lines <= 0 or remaining_chars <= 0:
             break
 
         context_lines = _context_lines(result, lines_before, lines_after)
         if not context_lines:
             continue
 
-        selected_lines = tuple(context_lines[:remaining_lines])
+        selected = []
+        for line in context_lines:
+            key = (result.chunk.file, line.number)
+            if key in seen:
+                continue
+            if remaining_lines <= 0 or remaining_chars <= 0:
+                break
+            text = redact(line.text)[:max(0, remaining_chars - 1)]
+            selected.append(ContextLine(line.number, text, line.matched))
+            seen.add(key)
+            remaining_lines -= 1
+            remaining_chars -= len(text) + 1
+        selected_lines = tuple(selected)
+        if not selected_lines:
+            continue
         sections.append(
             ContextSection(
                 file=result.chunk.file,
@@ -81,9 +110,23 @@ def context_from_results(
                 lines=selected_lines,
             )
         )
-        remaining_lines -= len(selected_lines)
-
-    return sections
+    # Merge by file and split gaps so every cited range consists of supplied lines.
+    merged: dict[str, dict[int, ContextLine]] = {}
+    info = {}
+    for section in sections:
+        merged.setdefault(section.file, {}).update({line.number: line for line in section.lines})
+        info.setdefault(section.file, (section.language, section.score))
+    output = []
+    for file, numbered in merged.items():
+        runs: list[list[ContextLine]] = []
+        for number in sorted(numbered):
+            if not runs or number != runs[-1][-1].number + 1:
+                runs.append([])
+            runs[-1].append(numbered[number])
+        language, score = info[file]
+        output.extend(ContextSection(file, language, run[0].number, run[-1].number,
+                                     score, tuple(run)) for run in runs)
+    return output
 
 
 def render_context(sections: Iterable[ContextSection], *, max_line_length: int = 160) -> str:
@@ -113,20 +156,22 @@ def context_records(sections: Iterable[ContextSection]) -> list[dict[str, object
     records: list[dict[str, object]] = []
 
     for section in sections:
+        # Redact complete blocks before serializing individual lines.
+        clean_lines = redact("\n".join(line.text for line in section.lines)).split("\n") if section.lines else []
         records.append(
             {
-                "file": section.file,
-                "language": section.language,
+                "file": redact(section.file),
+                "language": redact(section.language),
                 "start_line": section.start_line,
                 "end_line": section.end_line,
                 "score": section.score,
                 "lines": [
                     {
                         "number": line.number,
-                        "text": line.text,
+                        "text": clean_text,
                         "matched": line.matched,
                     }
-                    for line in section.lines
+                    for line, clean_text in zip(section.lines, clean_lines, strict=True)
                 ],
             }
         )
@@ -140,8 +185,12 @@ def _context_lines(
     lines_after: int,
 ) -> list[ContextLine]:
     chunk = result.chunk
-    lines = chunk.content.splitlines()
+    # Clean the whole chunk before selecting excerpts, including partial keys.
+    # Chunks use newline separators; preserve a final empty source line.
+    lines = redact(chunk.content).split("\n")
     matched_lines = set(result.matched_lines)
+    if not matched_lines:
+        return [ContextLine(chunk.start_line + i, line, False) for i, line in enumerate(lines)]
     ranges = _line_ranges(
         result.matched_lines or (chunk.start_line,),
         start_line=chunk.start_line,

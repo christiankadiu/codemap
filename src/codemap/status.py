@@ -4,9 +4,9 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from chunker import Chunk
-from indexer import read_chunks
-from scanner import scan_repository
+from codemap.chunker import Chunk
+from codemap.indexer import read_chunks, read_index_metadata
+from codemap.scanner import scan_repository
 
 
 @dataclass(frozen=True)
@@ -29,15 +29,21 @@ def check_index(
     repository: Path | str,
     *,
     index_file: Path | str,
-    max_file_size: int = 1_000_000,
+    max_file_size: int | None = None,
 ) -> IndexStatus:
     root = Path(repository).expanduser().resolve()
-    path = Path(index_file).expanduser().resolve()
+    path = Path(index_file).expanduser().absolute()
+    metadata = read_index_metadata(path)
+    if metadata is None:
+        raise ValueError("index not found; run codemap index first")
+    if max_file_size is None:
+        max_file_size = metadata.settings.get("max_file_size", 1_000_000)
     current_files = {
         source_file.relative_path: source_file.content_hash
         for source_file in scan_repository(root, max_file_size=max_file_size)
     }
-    indexed_files = _indexed_file_hashes(read_chunks(path))
+    read_chunks(path, metadata=metadata)
+    indexed_files = metadata.file_hashes
     shared_files = current_files.keys() & indexed_files.keys()
 
     unchanged_files = sorted(

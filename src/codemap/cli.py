@@ -3,17 +3,23 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 
-from answers import build_answer_request
-from config import config_record, load_config, provider_options, render_config
-from context import build_context, context_records, render_context
-from indexer import build_index, default_index_file
-from providers import provider_for_name, provider_names
-from responses import build_response, render_response, response_record
-from search import SearchResult, search_index
-from stats import collect_stats
-from status import IndexStatus, check_index
+from codemap.answers import build_answer_request
+from codemap.config import config_record, load_config, provider_options, render_config
+from codemap.context import build_context, context_records, render_context
+from codemap.embeddings import LocalEmbeddingProvider
+from codemap.indexer import build_index, default_index_file
+from codemap.interactive import prompt_api_key
+from codemap.privacy import redact
+from codemap.providers import provider_for_name, provider_names, validate_chat_options
+from codemap.remote_provider import validate_endpoint
+from codemap.responses import build_response, render_response, response_record
+from codemap.retriever import MODES, retrieve
+from codemap.search import SearchResult
+from codemap.stats import collect_stats
+from codemap.status import IndexStatus, check_index
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -22,9 +28,15 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         return args.handler(args)
-    except (FileNotFoundError, NotADirectoryError, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
+    except OSError:
+        print("error: filesystem or network operation failed", file=sys.stderr)
         return 1
+    except (RuntimeError, ValueError) as exc:
+        print(f"error: {redact(str(exc))}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("\nCancelled.", file=sys.stderr)
+        return 130
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -37,6 +49,11 @@ def build_parser() -> argparse.ArgumentParser:
     index_parser.add_argument("--max-file-size", type=int, default=1_000_000)
     index_parser.add_argument("--max-lines", type=int, default=120)
     index_parser.add_argument("--overlap-lines", type=int, default=20)
+    index_parser.add_argument("--strategy", choices=("auto", "lines"), default="auto")
+    index_parser.add_argument("--embeddings", action="store_true", help="build local semantic vectors")
+    index_parser.add_argument("--download-model", action="store_true", help="allow downloading the pinned embedding model")
+    index_parser.add_argument("--full", action="store_true", help="rebuild without reusing the previous index")
+    index_parser.add_argument("--batch-size", type=int, default=32)
     index_parser.set_defaults(handler=run_index)
 
     stats_parser = subparsers.add_parser("stats", help="show index statistics")
@@ -51,7 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser = subparsers.add_parser("status", help="check index status")
     status_parser.add_argument("--repository", type=Path, default=Path.cwd())
     status_parser.add_argument("--index-file", type=Path)
-    status_parser.add_argument("--max-file-size", type=int, default=1_000_000)
+    status_parser.add_argument("--max-file-size", type=int)
     status_parser.set_defaults(handler=run_status)
 
     context_parser = subparsers.add_parser("context", help="build search context")
@@ -67,7 +84,11 @@ def build_parser() -> argparse.ArgumentParser:
     context_parser.add_argument("--format", choices=("text", "json"), default="text")
     context_parser.set_defaults(handler=run_context)
 
-    answer_parser = subparsers.add_parser("answer", help="prepare an answer")
+    answer_parser = subparsers.add_parser(
+        "answer", help="prepare an answer",
+        description="Use basic for local references, chat for a compatible Chat Completions API, or remote for a custom JSON adapter.",
+        epilog="For chat, set CODEMAP_REMOTE_ENDPOINT to the full API URL and CODEMAP_MODEL to your model ID. Use --prompt-key to enter the key privately, or set CODEMAP_REMOTE_KEY. Optional: CODEMAP_CHAT_FORMAT=json_schema and CODEMAP_REASONING_EFFORT=low only when supported by your model. No cloud provider or model is selected by default.",
+    )
     answer_parser.add_argument("question")
     answer_parser.add_argument("--repository", type=Path, default=Path.cwd())
     answer_parser.add_argument("--index-file", type=Path)
@@ -80,6 +101,8 @@ def build_parser() -> argparse.ArgumentParser:
     answer_parser.add_argument("--format", choices=("text", "json"), default="text")
     answer_parser.add_argument("--provider", choices=provider_names())
     answer_parser.add_argument("--show-context", action="store_true")
+    answer_parser.add_argument("--allow-remote", action="store_true", help="consent to send the question and selected code to the configured endpoint")
+    answer_parser.add_argument("--prompt-key", action="store_true", help="enter an API key privately for this request without saving it")
     answer_parser.set_defaults(handler=run_answer)
 
     search_parser = subparsers.add_parser("search", help="search indexed chunks")
@@ -92,10 +115,20 @@ def build_parser() -> argparse.ArgumentParser:
     search_parser.add_argument("--show-snippets", action="store_true")
     search_parser.set_defaults(handler=run_search)
 
+    for command in (search_parser, context_parser, answer_parser):
+        command.add_argument("--mode", choices=MODES, default="auto")
+        command.add_argument("--min-score", type=float, default=0.2, help="minimum semantic cosine similarity")
+    for command in (context_parser, answer_parser):
+        command.add_argument("--max-chars", type=int, default=12000)
+
     return parser
 
 
 def run_index(args: argparse.Namespace) -> int:
+    if args.download_model and not args.embeddings:
+        raise ValueError("--download-model requires --embeddings")
+    provider = (LocalEmbeddingProvider(allow_download=args.download_model, batch_size=args.batch_size)
+                if args.embeddings else None)
     index_file = args.index_file or default_index_file(args.repository)
     summary = build_index(
         args.repository,
@@ -103,16 +136,21 @@ def run_index(args: argparse.Namespace) -> int:
         max_file_size=args.max_file_size,
         max_lines=args.max_lines,
         overlap_lines=args.overlap_lines,
+        strategy=args.strategy,
+        embedding_provider=provider,
+        incremental=not args.full,
+        batch_size=args.batch_size,
     )
 
-    print(f"Repository: {summary.repository}")
-    print(f"Index: {summary.index_file}")
-    print(f"Metadata: {summary.metadata_file}")
     print(f"Format: {summary.format_version}")
     print(f"Files seen: {summary.files_seen}")
     print(f"Files indexed: {summary.files_indexed}")
     print(f"Files skipped: {summary.files_skipped}")
     print(f"Chunks: {summary.chunks_written}")
+    print(f"Files reused: {summary.files_reused}")
+    print(f"Embeddings reused: {summary.embeddings_reused}")
+    print(f"Embeddings created: {summary.embeddings_created}")
+    print(f"Files redacted: {summary.redacted_files}")
     print_languages(summary.languages)
     return 0
 
@@ -121,7 +159,6 @@ def run_stats(args: argparse.Namespace) -> int:
     index_file = args.index_file or default_index_file(args.repository)
     stats = collect_stats(index_file)
 
-    print(f"Index: {stats.index_file}")
     print(f"Format: {stats.format_version if stats.format_version is not None else 'unknown'}")
     print(f"Files: {stats.files}")
     print(f"Chunks: {stats.chunks}")
@@ -163,6 +200,9 @@ def run_context(args: argparse.Namespace) -> int:
         lines_before=args.lines_before,
         lines_after=args.lines_after,
         max_lines=args.max_lines,
+        max_chars=args.max_chars,
+        mode=args.mode,
+        min_score=args.min_score,
     )
 
     if not sections:
@@ -183,6 +223,10 @@ def run_context(args: argparse.Namespace) -> int:
 
 def run_answer(args: argparse.Namespace) -> int:
     config = load_config(provider=args.provider)
+    if config.provider in ("remote", "chat") and not args.allow_remote:
+        raise ValueError("remote answers send your question and selected code externally; review your ignore rules and use --allow-remote to consent")
+    if args.prompt_key and config.provider == "basic":
+        raise ValueError("--prompt-key requires --provider chat or remote")
     index_file = args.index_file or default_index_file(args.repository)
     request = build_answer_request(
         args.question,
@@ -193,11 +237,23 @@ def run_answer(args: argparse.Namespace) -> int:
         lines_before=args.lines_before,
         lines_after=args.lines_after,
         max_lines=args.max_lines,
+        max_chars=args.max_chars,
+        mode=args.mode,
+        min_score=args.min_score,
     )
+    options = provider_options(config, allow_remote=args.allow_remote)
+    if request.has_context and config.provider == "chat":
+        validate_chat_options(options)
+    elif request.has_context and config.provider == "remote":
+        if not options.remote_endpoint:
+            raise ValueError("remote provider endpoint is not configured")
+        validate_endpoint(options.remote_endpoint)
+    if args.prompt_key and request.has_context:
+        options = replace(options, remote_access_key=prompt_api_key())
     response = build_response(
         request,
         provider=provider_for_name(config.provider),
-        options=provider_options(config),
+        options=options,
     )
 
     if args.format == "json":
@@ -219,12 +275,14 @@ def run_answer(args: argparse.Namespace) -> int:
 
 def run_search(args: argparse.Namespace) -> int:
     index_file = args.index_file or default_index_file(args.repository)
-    results = search_index(
+    results = retrieve(
         args.query,
         index_file,
         limit=args.limit,
         language=args.language,
         path=args.path,
+        mode=args.mode,
+        min_score=args.min_score,
     )
 
     if not results:
@@ -238,8 +296,6 @@ def run_search(args: argparse.Namespace) -> int:
 
 
 def print_index_status(index_status: IndexStatus) -> None:
-    print(f"Repository: {index_status.repository}")
-    print(f"Index: {index_status.index_file}")
     print(f"Current: {'yes' if index_status.is_current else 'no'}")
     print(f"Files indexed: {index_status.indexed_files}")
     print(f"Files scanned: {index_status.scanned_files}")
@@ -267,10 +323,10 @@ def print_search_result(result: SearchResult, *, show_snippets: bool = False) ->
 
 
 def search_snippets(result: SearchResult, *, limit: int = 3) -> list[str]:
-    selected_lines = set(result.matched_lines[:limit])
+    selected_lines = set(result.matched_lines[:limit] or range(result.chunk.start_line, min(result.chunk.end_line + 1, result.chunk.start_line + limit)))
     snippets: list[str] = []
 
-    for line_number, line in enumerate(result.chunk.content.splitlines(), start=result.chunk.start_line):
+    for line_number, line in enumerate(result.chunk.content.split("\n"), start=result.chunk.start_line):
         if line_number not in selected_lines:
             continue
 

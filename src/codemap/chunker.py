@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import hashlib
 from dataclasses import dataclass
 
@@ -13,6 +14,9 @@ class Chunk:
     start_line: int
     end_line: int
     content: str
+    symbol: str | None = None
+    symbol_type: str | None = None
+    parent_symbol: str | None = None
 
 
 def chunk_text(
@@ -23,12 +27,29 @@ def chunk_text(
     content: str,
     max_lines: int = 120,
     overlap_lines: int = 20,
+    strategy: str = "auto",
 ) -> list[Chunk]:
     _validate_chunk_options(max_lines, overlap_lines)
+    if strategy not in ("auto", "lines"):
+        raise ValueError("chunk strategy must be auto or lines")
 
     lines = content.splitlines()
     if not lines:
         return []
+
+    if language == "python" and strategy == "auto":
+        try:
+            segments = _python_segments(content, len(lines))
+        except (SyntaxError, ValueError, RecursionError):
+            segments = [(1, len(lines), None, None, None)]
+        chunks = []
+        for start, end, symbol, kind, parent in segments:
+            for first, last in _line_windows(start, end, max_lines, overlap_lines):
+                text = "\n".join(lines[first - 1:last])
+                if text.strip():
+                    chunks.append(Chunk(_chunk_id(file, first, last, text), file, language,
+                                        file_hash, first, last, text, symbol, kind, parent))
+        return chunks
 
     ranges = (
         _markdown_ranges(lines, max_lines, overlap_lines)
@@ -115,3 +136,32 @@ def _line_windows(
 def _chunk_id(file: str, start_line: int, end_line: int, content: str) -> str:
     value = f"{file}\0{start_line}\0{end_line}\0{content}".encode("utf-8")
     return hashlib.sha256(value).hexdigest()[:16]
+
+
+def _python_segments(content: str, line_count: int) -> list[tuple]:
+    """Partition top-level declarations and methods without dropping module code."""
+    tree = ast.parse(content)
+    segments = []
+
+    def start(node):
+        return min([node.lineno] + [d.lineno for d in getattr(node, "decorator_list", [])])
+
+    def partition(nodes, first, last, parent=None):
+        cursor = first
+        for node in nodes:
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            begin, end = start(node), node.end_lineno
+            if cursor < begin:
+                segments.append((cursor, begin - 1, parent, "class" if parent else None, None))
+            name = f"{parent}.{node.name}" if parent else node.name
+            if isinstance(node, ast.ClassDef):
+                partition(node.body, begin, end, name)
+            else:
+                segments.append((begin, end, name, "method" if parent else "function", parent))
+            cursor = end + 1
+        if cursor <= last:
+            segments.append((cursor, last, parent, "class" if parent else None, None))
+
+    partition(tree.body, 1, line_count)
+    return segments

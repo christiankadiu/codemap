@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 EXTENSION_LANGUAGES = {
     ".c": "c",
     ".cpp": "cpp",

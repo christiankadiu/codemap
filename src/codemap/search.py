@@ -6,9 +6,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from chunker import Chunk
-from indexer import read_chunks
-
+from codemap.chunker import Chunk
+from codemap.indexer import read_chunks
 
 WORD_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|[0-9]+")
 CAMEL_CASE_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
@@ -95,11 +94,10 @@ def search_index(
 
 def _score_chunk(chunk: Chunk, query_terms: tuple[str, ...]) -> SearchResult:
     content = chunk.content.casefold()
-    file = chunk.file.casefold()
     language = chunk.language.casefold()
     content_counts = Counter(_words(chunk.content))
     file_counts = Counter(_words(chunk.file))
-    line_words = [set(_words(line)) for line in chunk.content.splitlines()]
+    line_words = [set(_words(line)) for line in chunk.content.split("\n")]
     matched_terms: list[str] = []
     score = 0.0
 
@@ -108,10 +106,6 @@ def _score_chunk(chunk: Chunk, query_terms: tuple[str, ...]) -> SearchResult:
         term_score += content_counts[term] * 2
         term_score += file_counts[term] * 4
 
-        if term in content:
-            term_score += 1
-        if term in file:
-            term_score += 3
         if term == language:
             term_score += 1
         if any(term in words for words in line_words):
@@ -165,11 +159,10 @@ def _query_terms(query: str) -> tuple[str, ...]:
 def _matched_lines(chunk: Chunk, query_terms: tuple[str, ...]) -> tuple[int, ...]:
     lines: list[int] = []
 
-    for line_number, line in enumerate(chunk.content.splitlines(), start=chunk.start_line):
+    for line_number, line in enumerate(chunk.content.split("\n"), start=chunk.start_line):
         line_words = set(_words(line))
-        line_text = line.casefold()
 
-        if any(term in line_words or term in line_text for term in query_terms):
+        if any(term in line_words for term in query_terms):
             lines.append(line_number)
 
     return tuple(lines)

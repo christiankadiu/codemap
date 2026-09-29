@@ -4,7 +4,7 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
-from indexer import read_chunks, read_index_metadata
+from codemap.indexer import read_chunks, read_index_metadata
 
 
 @dataclass(frozen=True)
@@ -17,11 +17,11 @@ class IndexStats:
 
 
 def collect_stats(index_file: Path | str) -> IndexStats:
-    path = Path(index_file).expanduser().resolve()
-    chunks = read_chunks(path)
+    path = Path(index_file).expanduser().absolute()
     metadata = read_index_metadata(path)
+    chunks = read_chunks(path, metadata=metadata)
     files = {chunk.file for chunk in chunks}
-    languages: Counter[str] = Counter(chunk.language for chunk in chunks)
+    languages: Counter[str] = Counter({chunk.file: chunk.language for chunk in chunks}.values())
 
     return IndexStats(
         index_file=path,
